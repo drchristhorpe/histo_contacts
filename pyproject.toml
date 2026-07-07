@@ -1,0 +1,29 @@
+[project]
+name = "histo-contacts"
+version = "0.1.0"
+description = "Compute a bond-typed contact map between one part of a 3D biological structure and one or more other chains, using PDBe Arpeggio."
+readme = "README.md"
+authors = [
+    { name = "Chris Thorpe", email = "33100149+drchristhorpe@users.noreply.github.com" }
+]
+requires-python = ">=3.14"
+dependencies = [
+    "biopython>=1.85",
+    "click>=8.1",
+    "rich>=13.7",
+    "gemmi>=0.7.5",
+    "openbabel>=3.2.0",
+    "pdbe-arpeggio>=1.4.4",
+]
+
+[project.scripts]
+histo-contacts = "histo_contacts.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.9.28,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
