@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `histo_contacts.residue_aggregator` — utility module for aggregating
+  atom-level contacts to residue-level pairs, with TCR:pMHC grouping by CDR
+  loops (IMGT-fixed positions on chains D/E) and MHC interface regions
+  (helix-only α1/α2 on chain A, peptide on chain C). Particularly useful for
+  pipeline consumers that need residue-level contact maps.
+- `aggregate_contacts()` — main entry point: takes atom-level rows from
+  `contact_map()` and produces residue-level rows with bond-type counts
+  (not unions), required for acceptance testing (self-consistency across
+  re-aggregated totals).
+- `categorize_contact()` — classifies each atom-level contact into a
+  (CDR loop, MHC region) pair, or None if out of scope.
+- `reconcile_against_aggregates()` — validates residue-level rows re-aggregate
+  to expected atom-pair totals per (CDR, region) cell.
+- `validate_no_regression()` — ensures helix-only counts ≤ whole-domain counts
+  (strict subset, no expansion allowed).
+- `write_residue_contacts_json()` — outputs residue-level contacts in the
+  standard JSON structure (keyed by structure ID, with per-structure metadata).
+- Example script `examples/aggregate_residue_contacts.py` — demonstrates the
+  canonical pattern: compute atom-level contacts, aggregate to residue level,
+  write JSON.
+- Comprehensive test suite for aggregation (`tests/test_residue_aggregator.py`):
+  26 unit tests covering definitions, categorization, aggregation, validation,
+  and an acceptance test against sample 1AO7 data.
+
 ## [0.1.0] - 2026-07-07
 
 ### Added

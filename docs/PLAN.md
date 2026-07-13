@@ -375,3 +375,137 @@ real Arpeggio runs throughout, no mocking of Arpeggio's output:
 6. Manually exercise the documented use cases end-to-end (`uv run
    histo-contacts ...`), inspect the JSON output in `tmp/`.
 7. Present for approval, then commit.
+
+## 15. Residue-level aggregation utility
+
+`histo_contacts` emits atom-level rows with bond-type classification. Downstream
+pipelines often need residue-level aggregation (one row per contacting residue
+pair, with bond types collapsed to counts per type, not unions). This section
+documents the `residue_aggregator` utility module that provides this aggregation,
+particularly for TCR:pMHC structures grouped by CDR loops and MHC interface
+regions.
+
+### Scope
+
+The core `histo_contacts` library remains single-purpose: generic bond-typed
+contact-finding, no domain knowledge of "TCR", "MHC", "CDR loop", "helix"
+(documented in `CLAUDE.md`). Residue-level aggregation with TCR:pMHC grouping
+lives in a new utility module (`src/histo_contacts/residue_aggregator.py`) — a
+reference pattern, not a required feature of the library itself.
+
+### Key design decisions
+
+**Bond-type counts, not unions.** Output records `{"proximal": 3, "vdw": 1}`,
+not `["proximal", "vdw"]`. One atom pair carries multiple types simultaneously
+(e.g., both proximal and vdw). Counting per type is required for acceptance
+testing: `SUM of bond_type_counts[bond_type]` across residue pairs in a
+(CDR, region) cell must equal the aggregated atom-pair count for that cell.
+A union would lose this information.
+
+**Fixed, IMGT-renumbered loops.** The utility assumes TCR chains D (α) and E
+(β) are IMGT-renumbered, so CDR positions are fixed across structures:
+
+| Loop | Chain | Residues |
+|---|---|---|
+| CDR1_alpha | D | 27–38 |
+| CDR2_alpha | D | 56–65 |
+| CDR3_alpha | D | 105–117 |
+| CDR1_beta | E | 27–38 |
+| CDR2_beta | E | 56–65 |
+| CDR3_beta | E | 105–117 |
+
+**Helix-only MHC regions.** α1 and α2 are defined as the helices flanking
+the groove (chain A residues 50–86 / 137–180), not the whole domains (1–90 /
+91–180). This is a deliberate scientific choice: the TCR reads the helical
+surfaces, and including the β-sheet floor dilutes the signal. Peptide (chain C)
+includes all residues.
+
+**Residue-level membership.** A contact belongs to a CDR loop / MHC region
+pair if **any atom** from the CDR-loop residue contacts **any atom** from the
+MHC-region residue. The aggregation counts all such atom pairs per bond type.
+
+### Input & output
+
+**Input:** List of atom-level contact dicts from `histo_contacts.contact_map()`,
+each carrying:
+
+```python
+{
+  "from_chain": "D", "from_residue": 101, "from_atom": "OG1",
+  "to_chain": "A", "to_residue": 62, "to_atom": "CA",
+  "bond_types": ["proximal", "vdw"],
+  "distance": 3.41,
+  # ... (type, from_aa, to_aa)
+}
+```
+
+**Output:** JSON structure with one record per structure, each containing:
+
+```python
+{
+  "pdb_id": "1AO7", "complex": "1", "file": "1AO7_aligned_1.pdb",
+  "ct_total_atom_pairs": 519,
+  "contacts": [
+    {
+      "cdr_loop": "CDR3_alpha",
+      "region": "alpha1",
+      "tcr_chain": "D",
+      "tcr_resnum": 101,
+      "tcr_resname": "THR",  # three-letter
+      "mhc_chain": "A",
+      "mhc_resnum": 62,
+      "mhc_resname": "GLY",  # three-letter
+      "n_atom_pairs": 3,
+      "bond_type_counts": {"proximal": 3, "vdw": 1, "hbond": 1},
+      "min_distance": 3.41
+    },
+    # ... more residue pairs
+  ]
+}
+```
+
+One row per (CDR residue, MHC residue) pair. `bond_type_counts` sums the count
+of each bond type across the atom pairs connecting that residue pair. Note: the
+counts do NOT sum to `n_atom_pairs` because one atom pair carries multiple
+types (they overlap by design).
+
+### Core functions
+
+`histo_contacts.residue_aggregator` exports:
+
+**`define_cdr_loops() -> dict[str, dict[str, tuple[int, int]]]`**
+  Returns CDR loop position ranges (hard-coded IMGT positions).
+
+**`define_mhc_regions() -> dict[str, tuple[str, int, int]]`**
+  Returns MHC region definitions (chain, start, end).
+
+**`categorize_contact(atom_row: dict, cdr_loops, mhc_regions) -> tuple[str, str] | None`**
+  Given an atom-level contact row, returns `(cdr_loop, region)` if it falls
+  within the defined ranges, else None.
+
+**`aggregate_contacts(atom_rows: list[dict]) -> dict[str, list[dict]]`**
+  Given atom-level rows, groups by (cdr_loop, region) pair, collapses to
+  (tcr_residue, mhc_residue) level, counts bond types, computes min distance.
+  Returns a dict keyed by structure ID, each value a list of residue-level rows.
+
+**`write_residue_contacts_json(structure_info: dict, residue_rows: list[dict], path: Path) -> None`**
+  Writes the final JSON structure to file.
+
+**`reconcile_against_aggregates(residue_rows, aggregate_counts) -> bool`**
+  Validates that `SUM of bond_type_counts[type]` for all residue pairs in a
+  (cdr, region) cell equals the expected atom-pair count for that cell.
+
+**`validate_no_regression(new_counts, old_counts) -> bool`**
+  Ensures that helix-only atom-pair counts are ≤ whole-domain counts (the
+  regions are a strict subset, so never expand).
+
+### Testing
+
+Unit tests in `tests/test_residue_aggregator.py`:
+- Loop/region definitions are correct (spot-check against known constants)
+- Categorization assigns rows to correct CDR-region pairs
+- Aggregation groups, deduplicates, and counts bond types correctly
+- Bond-type counting handles overlapping types (one pair, multiple types)
+- Edge cases: empty input, out-of-scope rows, reversed from/to sides
+- Acceptance tests against sample 1AO7 data: residue-level counts reconcile
+  to atom-pair aggregates, and numbers don't exceed whole-domain baseline

@@ -54,3 +54,7 @@ dmypy.json
 # tmp/ scratch dir: tracked via .gitkeep, contents ignored
 tmp/*
 !tmp/.gitkeep
+
+# briefs/ scratch dir: tracked via .gitkeep, contents ignored
+briefs/*
+!briefs/.gitkeep

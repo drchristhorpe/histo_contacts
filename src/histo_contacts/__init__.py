@@ -2,6 +2,7 @@
 
 from histo_contacts.core import ContactMapper, StructureError, contact_map, load_structure
 from histo_contacts.selectors import SelectorError
+from histo_contacts import residue_aggregator
 
 __all__ = [
     "ContactMapper",
@@ -9,4 +10,5 @@ __all__ = [
     "SelectorError",
     "contact_map",
     "load_structure",
+    "residue_aggregator",
 ]

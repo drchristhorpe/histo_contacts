@@ -165,6 +165,49 @@ iterable of chain ids (`["H", "L"]`).
   tokens (bare residue numbers/ranges) are only valid for single-chain
   structures.
 
+## Residue-level aggregation for TCR:pMHC structures
+
+This library produces atom-level contacts with bond-type classification. For
+pipelines that need residue-level contact maps grouped by CDR loops and MHC
+interface regions, the `residue_aggregator` utility module provides the
+canonical pattern:
+
+```python
+from histo_contacts import ContactMapper, residue_aggregator
+
+cm = ContactMapper("structure.pdb")
+atom_rows = cm.contact_map(
+    "D:27-38,D:56-65,D:105-117,E:27-38,E:56-65,E:105-117",  # All TCR CDRs
+    ["A", "C"],  # MHC + peptide
+    distance=5.0,
+)
+
+residue_rows = residue_aggregator.aggregate_contacts(atom_rows)
+residue_aggregator.write_residue_contacts_json(
+    {"file": "structure.pdb", "ct_total_atom_pairs": len(atom_rows)},
+    residue_rows,
+    "structure_residue_contacts.json",
+)
+```
+
+Key features:
+
+- **CDR loops at fixed IMGT positions** (chains D/E, not string-matched) —
+  requires IMGT-renumbered structures.
+- **Helix-only MHC regions** (α1: A 50–86, α2: A 137–180, peptide: C all) —
+  the TCR reads the helical surfaces, not the β-sheet floor.
+- **Bond-type counts, not unions** — one atom pair carries multiple types
+  simultaneously (e.g., both `proximal` and `vdw`), so the output is
+  `{"proximal": 3, "vdw": 1}`, not `["proximal", "vdw"]`. This is required
+  for acceptance testing: re-aggregating residue-level rows must exactly
+  match the atom-pair counts they came from.
+- **Validation functions** — `reconcile_against_aggregates()` checks that
+  residue rows re-aggregate correctly, and `validate_no_regression()`
+  ensures helix-only counts ≤ whole-domain baselines.
+
+See [examples/aggregate_residue_contacts.py](examples/aggregate_residue_contacts.py)
+for a complete working example.
+
 ## Development
 
 ```bash
@@ -177,5 +220,6 @@ Test fixtures under `tests/fixtures/` are real structure files from
 
 See [docs/PLAN.md](docs/PLAN.md) for the design rationale (including the
 empirical findings behind the gemmi-normalization step and the
-fresh-`InteractionComplex`-per-call design) and [CHANGELOG.md](CHANGELOG.md)
+fresh-`InteractionComplex`-per-call design, and a detailed design for
+residue-level aggregation) and [CHANGELOG.md](CHANGELOG.md)
 for release history.
