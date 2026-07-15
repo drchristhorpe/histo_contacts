@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Chris Thorpe", email = "33100149+drchristhorpe@users.noreply.github.com" }
 ]
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 dependencies = [
     "biopython>=1.85",
     "click>=8.1",
